@@ -183,15 +183,16 @@ jobs:
                   if vstate in ("PREPARE_FOR_SUBMISSION", "INVALID_BINARY"):
                       api("PATCH", f"/appStoreVersions/{vid}", json={"data": {"type": "appStoreVersions", "id": vid, "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
                       time.sleep(5)
-                      # Use reviewSubmissions API (newer)
+                      # Use reviewSubmissions API
                       sr = api("POST", "/reviewSubmissions", json={"data": {"type": "reviewSubmissions", "attributes": {"platform": "IOS"}, "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
-                      if sr.status_code >= 400:
-                          # Fallback to legacy endpoint
-                          sr2 = api("POST", "/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
-                          if sr2.status_code >= 400:
-                              print("Submission failed - check ASC manually")
-                      else:
-                          # Confirm the review submission
+                      if sr.status_code == 201:
                           rsid = sr.json()["data"]["id"]
+                          # Add appStoreVersion as review submission item
+                          api("POST", "/reviewSubmissionItems", json={"data": {"type": "reviewSubmissionItems", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}, "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rsid}}}}})
+                          time.sleep(2)
+                          # Confirm submission
                           api("PATCH", f"/reviewSubmissions/{rsid}", json={"data": {"type": "reviewSubmissions", "id": rsid, "attributes": {"submitted": True}}})
+                      elif sr.status_code == 409:
+                          # Already has a review submission, try legacy
+                          api("POST", "/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
           PYEOF
