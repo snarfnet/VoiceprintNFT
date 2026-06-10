@@ -127,36 +127,43 @@ jobs:
               if r.status_code >= 400: print(r.text[:500])
               return r
 
-          # Wait for build to be processed
+          # Wait for latest build to be processed
           build_id = None
+          build_num = os.environ.get("BUILD_NUM", "0")
+          print(f"Looking for build version {build_num}")
           for attempt in range(30):
-              r = api("GET", f"/builds?filter[app]={app_id}&limit=1")
+              r = api("GET", f"/builds?filter[app]={app_id}&filter[version]={build_num}&limit=5")
               builds = r.json().get("data", [])
               if builds:
-                  state = builds[0]["attributes"].get("processingState", "")
-                  valid = builds[0]["attributes"].get("valid", False)
-                  build_id = builds[0]["id"]
-                  print(f"  Build {build_id} state: {state}, valid: {valid}")
+                  b = builds[0]
+                  state = b["attributes"].get("processingState", "")
+                  valid = b["attributes"].get("valid", False)
+                  ver = b["attributes"].get("version", "?")
+                  build_id = b["id"]
+                  print(f"  Build {build_id} ver={ver} state={state} valid={valid}")
                   if state == "VALID" and valid:
                       break
+                  if state == "VALID" and not valid:
+                      print("  Build processed but invalid, cannot submit")
+                      break
+              else:
+                  print(f"  No builds found for version {build_num}")
               print(f"  Attempt {attempt+1}/30, waiting...")
               time.sleep(30)
 
-          r = api("GET", f"/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=1")
-          versions = r.json().get("data", [])
-          if versions:
-              vid = versions[0]["id"]
-              vstate = versions[0]["attributes"]["appStoreState"]
-              print(f"Version {vid} state: {vstate}")
-              if vstate in ("PREPARE_FOR_SUBMISSION", "INVALID_BINARY"):
-                  if build_id:
+          if not build_id or not valid:
+              print("No valid build found, skipping submission")
+          else:
+              r = api("GET", f"/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=1")
+              versions = r.json().get("data", [])
+              if versions:
+                  vid = versions[0]["id"]
+                  vstate = versions[0]["attributes"]["appStoreState"]
+                  print(f"Version {vid} state: {vstate}")
+                  if vstate in ("PREPARE_FOR_SUBMISSION", "INVALID_BINARY"):
                       api("PATCH", f"/appStoreVersions/{vid}", json={"data": {"type": "appStoreVersions", "id": vid, "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
-                  # Delete existing submission if any
-                  sr = api("GET", f"/appStoreVersions/{vid}/appStoreVersionSubmission")
-                  if sr.status_code == 200 and sr.json().get("data"):
-                      sub_id = sr.json()["data"]["id"]
-                      print(f"Deleting existing submission {sub_id}")
-                      api("DELETE", f"/appStoreVersionSubmissions/{sub_id}")
-                      time.sleep(2)
-                  api("POST", f"/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
+                      # Try to submit for review
+                      sr = api("POST", f"/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
+                      if sr.status_code == 403:
+                          print("Submission blocked - may need manual review in ASC")
           PYEOF
