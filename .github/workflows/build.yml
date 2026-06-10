@@ -127,15 +127,19 @@ jobs:
               if r.status_code >= 400: print(r.text[:500])
               return r
 
+          # Wait for build to be processed
+          build_id = None
           for attempt in range(30):
-              r = api("GET", f"/apps/{app_id}/builds?sort=-uploadedDate&limit=1")
+              r = api("GET", f"/builds?filter[app]={app_id}&limit=1")
               builds = r.json().get("data", [])
               if builds:
                   state = builds[0]["attributes"].get("processingState", "")
                   valid = builds[0]["attributes"].get("valid", False)
-                  print(f"  Build state: {state}, valid: {valid}")
+                  build_id = builds[0]["id"]
+                  print(f"  Build {build_id} state: {state}, valid: {valid}")
                   if state == "VALID" and valid:
                       break
+              print(f"  Attempt {attempt+1}/30, waiting...")
               time.sleep(30)
 
           r = api("GET", f"/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=1")
@@ -145,9 +149,14 @@ jobs:
               vstate = versions[0]["attributes"]["appStoreState"]
               print(f"Version {vid} state: {vstate}")
               if vstate in ("PREPARE_FOR_SUBMISSION", "INVALID_BINARY"):
-                  r2 = api("GET", f"/apps/{app_id}/builds?sort=-uploadedDate&limit=1")
-                  if r2.json().get("data"):
-                      build_id = r2.json()["data"][0]["id"]
+                  if build_id:
                       api("PATCH", f"/appStoreVersions/{vid}", json={"data": {"type": "appStoreVersions", "id": vid, "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+                  # Delete existing submission if any
+                  sr = api("GET", f"/appStoreVersions/{vid}/appStoreVersionSubmission")
+                  if sr.status_code == 200 and sr.json().get("data"):
+                      sub_id = sr.json()["data"]["id"]
+                      print(f"Deleting existing submission {sub_id}")
+                      api("DELETE", f"/appStoreVersionSubmissions/{sub_id}")
+                      time.sleep(2)
                   api("POST", f"/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
           PYEOF
