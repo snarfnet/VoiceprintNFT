@@ -25,6 +25,19 @@ jobs:
           echo "BUILD_NUM=$BUILD_NUM" >> $GITHUB_ENV
           sed -i "" "s/CURRENT_PROJECT_VERSION: .*/CURRENT_PROJECT_VERSION: \"$BUILD_NUM\"/" project.yml
 
+      - name: Flatten app icon alpha channel
+        run: |
+          ICON="VoiceprintNFT/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+          pip3 install --break-system-packages Pillow
+          python3 -c "
+          from PIL import Image
+          img = Image.open('$ICON').convert('RGBA')
+          bg = Image.new('RGBA', img.size, (0, 0, 0, 255))
+          bg.paste(img, mask=img)
+          bg.convert('RGB').save('$ICON')
+          print('Alpha channel removed from app icon')
+          "
+
       - name: Generate Xcode project
         run: xcodegen generate
 
