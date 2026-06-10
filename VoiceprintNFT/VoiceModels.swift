@@ -78,9 +78,9 @@ struct ArtworkStyle: Codable {
             family: family,
             biomorphIndex: Int(rng.next() % 100),
             symmetry: 2 + Int(rng.next() % 6),
-            seed: seed,
             strokeBias: 0.6 + rng.double(in: 0...0.8),
-            turbulence: 0.4 + rng.double(in: 0...1.2)
+            turbulence: 0.4 + rng.double(in: 0...1.2),
+            seed: seed
         )
     }
 }
