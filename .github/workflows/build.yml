@@ -124,7 +124,7 @@ jobs:
               url = f"https://api.appstoreconnect.apple.com/v1{path}"
               r = requests.request(method, url, headers={"Authorization": f"Bearer {token()}", "Content-Type": "application/json"}, **kw)
               print(f"{method} {path} -> {r.status_code}")
-              if r.status_code >= 400: print(r.text[:500])
+              if r.status_code >= 400: print(r.text[:2000])
               return r
 
           # Wait for latest build to finish processing
