@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"# TrackerBuster uses: CERTIFICATE_BASE64, CERTIFICATE_PASSWORD, PROVISIONING_PROFILE_BASE64, TEAM_ID, PROFILE_NAME, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_BASE64\\n# Copy those secrets from Tra...",
+  "error": "Exit code 1",
+  "timestamp": "2026-06-10T13:03:42.650Z",
+  "retry_count": 1
+}

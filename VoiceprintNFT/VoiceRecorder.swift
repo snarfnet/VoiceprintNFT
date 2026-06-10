@@ -84,13 +84,23 @@ final class VoiceRecorder: ObservableObject {
         }
         rhythmDensity = min(1, rhythmDensity / Double(energy.count))
 
+        let avgPitch = pitch.reduce(0, +) / Double(pitch.count)
+
+        var zeroCrossings = 0.0
+        for i in 1..<wave.count {
+            if (wave[i] >= 0.5) != (wave[i - 1] >= 0.5) { zeroCrossings += 1 }
+        }
+        let zcr = zeroCrossings / Double(max(1, wave.count))
+
         return VoiceFeatures(
             averageEnergy: min(1, avgEnergy),
             energyCurve: energy,
             waveform: wave,
             pitchCurve: pitch,
             pitchRange: pitchMax - pitchMin,
-            rhythmDensity: rhythmDensity
+            rhythmDensity: rhythmDensity,
+            averagePitch: avgPitch,
+            zeroCrossingRate: zcr
         )
     }
 

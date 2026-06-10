@@ -9,6 +9,8 @@ struct VoiceFeatures: Codable {
     var pitchCurve: [Double]
     var pitchRange: Double
     var rhythmDensity: Double
+    var averagePitch: Double
+    var zeroCrossingRate: Double
 
     static let empty = VoiceFeatures(
         averageEnergy: 0,
@@ -16,7 +18,9 @@ struct VoiceFeatures: Codable {
         waveform: Array(repeating: 0, count: 64),
         pitchCurve: Array(repeating: 0, count: 64),
         pitchRange: 0,
-        rhythmDensity: 0
+        rhythmDensity: 0,
+        averagePitch: 200,
+        zeroCrossingRate: 0
     )
 }
 
@@ -65,6 +69,7 @@ struct ArtworkStyle: Codable {
     var symmetry: Int
     var strokeBias: Double
     var turbulence: Double
+    var seed: UInt64
 
     static func from(features: VoiceFeatures, seed: UInt64) -> ArtworkStyle {
         var rng = SeededRandomNumberGenerator(seed: seed &+ 7919)
@@ -73,6 +78,7 @@ struct ArtworkStyle: Codable {
             family: family,
             biomorphIndex: Int(rng.next() % 100),
             symmetry: 2 + Int(rng.next() % 6),
+            seed: seed,
             strokeBias: 0.6 + rng.double(in: 0...0.8),
             turbulence: 0.4 + rng.double(in: 0...1.2)
         )
