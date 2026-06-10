@@ -183,22 +183,14 @@ jobs:
                   if vstate in ("PREPARE_FOR_SUBMISSION", "INVALID_BINARY"):
                       api("PATCH", f"/appStoreVersions/{vid}", json={"data": {"type": "appStoreVersions", "id": vid, "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
                       time.sleep(5)
-                      # Delete any existing unsubmitted review submissions
-                      esr = api("GET", f"/apps/{app_id}/reviewSubmissions?filter[state]=WAITING_FOR_REVIEW,UNRESOLVED,IN_REVIEW")
-                      if esr.status_code == 200:
-                          for rs in esr.json().get("data", []):
-                              rsstate = rs["attributes"].get("state", "")
-                              if rsstate in ("WAITING_FOR_REVIEW", "UNRESOLVED"):
-                                  print(f"Canceling existing submission {rs['id']} state={rsstate}")
-                                  api("DELETE", f"/reviewSubmissions/{rs['id']}")
-                                  time.sleep(2)
-                      # Also check for READY_FOR_REVIEW state
-                      esr2 = api("GET", f"/apps/{app_id}/reviewSubmissions?filter[state]=READY_FOR_REVIEW")
-                      if esr2.status_code == 200:
-                          for rs in esr2.json().get("data", []):
-                              print(f"Canceling ready submission {rs['id']}")
-                              api("DELETE", f"/reviewSubmissions/{rs['id']}")
-                              time.sleep(2)
+                      # Cancel any existing non-complete review submissions
+                      for st in ["READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW"]:
+                          esr = api("GET", f"/apps/{app_id}/reviewSubmissions?filter[state]={st}")
+                          if esr.status_code == 200:
+                              for rs in esr.json().get("data", []):
+                                  print(f"Canceling submission {rs['id']} state={st}")
+                                  api("PATCH", f"/reviewSubmissions/{rs['id']}", json={"data": {"type": "reviewSubmissions", "id": rs["id"], "attributes": {"canceled": True}}})
+                                  time.sleep(3)
 
                       # Create new review submission
                       sr = api("POST", "/reviewSubmissions", json={"data": {"type": "reviewSubmissions", "attributes": {"platform": "IOS"}, "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
