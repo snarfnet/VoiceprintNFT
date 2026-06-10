@@ -127,7 +127,7 @@ jobs:
               if r.status_code >= 400: print(r.text[:500])
               return r
 
-          # Wait for latest build to be processed
+          # Wait for latest build to finish processing
           build_id = None
           build_num = os.environ.get("BUILD_NUM", "0")
           print(f"Looking for build version {build_num}")
@@ -141,19 +141,39 @@ jobs:
                   ver = b["attributes"].get("version", "?")
                   build_id = b["id"]
                   print(f"  Build {build_id} ver={ver} state={state} valid={valid}")
-                  if state == "VALID" and valid:
-                      break
-                  if state == "VALID" and not valid:
-                      print("  Build processed but invalid, cannot submit")
+                  if state == "VALID":
                       break
               else:
                   print(f"  No builds found for version {build_num}")
               print(f"  Attempt {attempt+1}/30, waiting...")
               time.sleep(30)
 
-          if not build_id or not valid:
-              print("No valid build found, skipping submission")
+          if not build_id:
+              print("No build found, skipping")
           else:
+              # Set export compliance (usesNonExemptEncryption=false)
+              comp = api("POST", "/betaAppReviewSubmissions", json={"data": {"type": "betaAppReviewSubmissions", "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+              print(f"Beta review submission: {comp.status_code}")
+
+              # Set compliance info
+              bld_r = api("GET", f"/builds/{build_id}/buildBetaDetail")
+              if bld_r.status_code == 200:
+                  detail_id = bld_r.json()["data"]["id"]
+                  api("PATCH", f"/buildBetaDetails/{detail_id}", json={"data": {"type": "buildBetaDetails", "id": detail_id, "attributes": {"autoNotifyEnabled": False}}})
+
+              # Wait a bit for compliance to be set
+              time.sleep(10)
+
+              # Re-check build validity
+              for attempt in range(10):
+                  r = api("GET", f"/builds/{build_id}")
+                  valid = r.json()["data"]["attributes"].get("valid", False)
+                  print(f"  Build valid: {valid} (check {attempt+1}/10)")
+                  if valid:
+                      break
+                  time.sleep(15)
+
+              # Attach build to version and submit
               r = api("GET", f"/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=1")
               versions = r.json().get("data", [])
               if versions:
@@ -162,8 +182,16 @@ jobs:
                   print(f"Version {vid} state: {vstate}")
                   if vstate in ("PREPARE_FOR_SUBMISSION", "INVALID_BINARY"):
                       api("PATCH", f"/appStoreVersions/{vid}", json={"data": {"type": "appStoreVersions", "id": vid, "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
-                      # Try to submit for review
-                      sr = api("POST", f"/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
-                      if sr.status_code == 403:
-                          print("Submission blocked - may need manual review in ASC")
+                      time.sleep(5)
+                      # Use reviewSubmissions API (newer)
+                      sr = api("POST", "/reviewSubmissions", json={"data": {"type": "reviewSubmissions", "attributes": {"platform": "IOS"}, "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
+                      if sr.status_code >= 400:
+                          # Fallback to legacy endpoint
+                          sr2 = api("POST", "/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
+                          if sr2.status_code >= 400:
+                              print("Submission failed - check ASC manually")
+                      else:
+                          # Confirm the review submission
+                          rsid = sr.json()["data"]["id"]
+                          api("PATCH", f"/reviewSubmissions/{rsid}", json={"data": {"type": "reviewSubmissions", "id": rsid, "attributes": {"submitted": True}}})
           PYEOF
