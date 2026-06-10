@@ -183,16 +183,34 @@ jobs:
                   if vstate in ("PREPARE_FOR_SUBMISSION", "INVALID_BINARY"):
                       api("PATCH", f"/appStoreVersions/{vid}", json={"data": {"type": "appStoreVersions", "id": vid, "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
                       time.sleep(5)
-                      # Use reviewSubmissions API
+                      # Delete any existing unsubmitted review submissions
+                      esr = api("GET", f"/apps/{app_id}/reviewSubmissions?filter[state]=WAITING_FOR_REVIEW,UNRESOLVED,IN_REVIEW")
+                      if esr.status_code == 200:
+                          for rs in esr.json().get("data", []):
+                              rsstate = rs["attributes"].get("state", "")
+                              if rsstate in ("WAITING_FOR_REVIEW", "UNRESOLVED"):
+                                  print(f"Canceling existing submission {rs['id']} state={rsstate}")
+                                  api("DELETE", f"/reviewSubmissions/{rs['id']}")
+                                  time.sleep(2)
+                      # Also check for READY_FOR_REVIEW state
+                      esr2 = api("GET", f"/apps/{app_id}/reviewSubmissions?filter[state]=READY_FOR_REVIEW")
+                      if esr2.status_code == 200:
+                          for rs in esr2.json().get("data", []):
+                              print(f"Canceling ready submission {rs['id']}")
+                              api("DELETE", f"/reviewSubmissions/{rs['id']}")
+                              time.sleep(2)
+
+                      # Create new review submission
                       sr = api("POST", "/reviewSubmissions", json={"data": {"type": "reviewSubmissions", "attributes": {"platform": "IOS"}, "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
                       if sr.status_code == 201:
                           rsid = sr.json()["data"]["id"]
                           # Add appStoreVersion as review submission item
-                          api("POST", "/reviewSubmissionItems", json={"data": {"type": "reviewSubmissionItems", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}, "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rsid}}}}})
-                          time.sleep(2)
-                          # Confirm submission
-                          api("PATCH", f"/reviewSubmissions/{rsid}", json={"data": {"type": "reviewSubmissions", "id": rsid, "attributes": {"submitted": True}}})
-                      elif sr.status_code == 409:
-                          # Already has a review submission, try legacy
-                          api("POST", "/appStoreVersionSubmissions", json={"data": {"type": "appStoreVersionSubmissions", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}}})
+                          item_r = api("POST", "/reviewSubmissionItems", json={"data": {"type": "reviewSubmissionItems", "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}, "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": rsid}}}}})
+                          if item_r.status_code == 201:
+                              time.sleep(2)
+                              api("PATCH", f"/reviewSubmissions/{rsid}", json={"data": {"type": "reviewSubmissions", "id": rsid, "attributes": {"submitted": True}}})
+                          else:
+                              print("Failed to add version to submission")
+                      else:
+                          print(f"Failed to create review submission: {sr.status_code}")
           PYEOF
